@@ -27,8 +27,4 @@ CUBE = cube()
 TORUS = torus()
 UV_SPHERE = uv_sphere()
 
-ALL_PRIMITIVES = [
-    CUBE,
-    TORUS,
-    UV_SPHERE
-]
+ALL_PRIMITIVES = [CUBE, TORUS, UV_SPHERE]

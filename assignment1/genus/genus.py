@@ -1,5 +1,6 @@
 import bmesh
 from assignment1.boundaries import mesh_boundary_loops
+from assignment1.components import mesh_connected_components
 
 
 # !!! This function will be used for automatic grading, don't edit the signature !!!
@@ -17,10 +18,16 @@ def mesh_genus(mesh: bmesh.types.BMesh) -> int:
     :return: The genus of the mesh, as an integer.
     """
     # TODO: This should return the genus of the mesh
+    num_components = len(mesh_connected_components(mesh))
+    num_loops = len(mesh_boundary_loops(mesh))
+
+    if num_components > 1 and num_loops == 0:
+        return -1
+
     V = len(mesh.verts)
     E = len(mesh.edges)
     F = len(mesh.faces)
-    
+
     # Formula to calculate genus
     genus = 1 - (V - E + F) // 2
     return genus

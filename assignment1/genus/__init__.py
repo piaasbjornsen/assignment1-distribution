@@ -22,4 +22,4 @@ class MeshGenus(bpy.types.Panel):
         bm = bmesh.new()
         bm.from_mesh(context.active_object.data)
 
-        self.layout.label(text=f'Genus: {mesh_genus(bm)}')
+        self.layout.label(text=f"Genus: {mesh_genus(bm)}")

@@ -11,8 +11,10 @@ sys.path.append(os.path.dirname(__file__))
 # running `pip install -r requirements.txt` should enable code-completion in your IDE,
 # but Blender needs to install the requirements itself.
 import pip
-pip.main(['install', '-r', f'{os.path.dirname(__file__)}/requirements.txt'])
+
+pip.main(["install", "-r", f"{os.path.dirname(__file__)}/requirements.txt"])
 
 # Add your plugins to the Blender UI
 import assignment1
+
 assignment1.register()

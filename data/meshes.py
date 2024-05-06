@@ -1,7 +1,7 @@
 import os
 import bpy, bmesh
 
-MESH_DIR = os.path.join(os.path.dirname(__file__), 'meshes')
+MESH_DIR = os.path.join(os.path.dirname(__file__), "meshes")
 
 
 def load(mesh_name: str) -> bmesh.types.BMesh:
@@ -14,8 +14,8 @@ def load(mesh_name: str) -> bmesh.types.BMesh:
     return bm
 
 
-BAGEL_CUT_TORUS = load('bagel-cut-torus.obj')
-DOUBLE_TORUS = load('double-torus.obj')
-HALF_BAGEL_CUT_TORUS = load('half-bagel-cut-torus.obj')
-HALF_TORUS = load('half-torus.obj')
-TWO_TORI = load('two-tori.obj')
+BAGEL_CUT_TORUS = load("bagel-cut-torus.obj")
+DOUBLE_TORUS = load("double-torus.obj")
+HALF_BAGEL_CUT_TORUS = load("half-bagel-cut-torus.obj")
+HALF_TORUS = load("half-torus.obj")
+TWO_TORI = load("two-tori.obj")
