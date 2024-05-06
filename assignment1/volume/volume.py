@@ -17,4 +17,17 @@ def mesh_volume(mesh: bmesh.types.BMesh) -> float:
     bmesh.ops.triangulate(mesh, faces=mesh.faces)
 
     # TODO: Return the volume of the mesh (without using Blender's built-in functionality)
-    return 0.0
+    # Calculate the volume contribution of each triangle
+    volume = 0.0
+    for face in mesh.faces:
+        v0 = face.verts[0].co
+        v1 = face.verts[1].co
+        v2 = face.verts[2].co
+
+        # Compute the signed volume of the tetrahedron formed by the face and the origin
+        vol = v0.dot(v1.cross(v2)) / 6.0
+        volume += vol
+
+    result = abs(volume)
+
+    return result  # Return the absolute volume to ensure positivity
