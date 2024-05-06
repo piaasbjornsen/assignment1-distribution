@@ -1,3 +1,4 @@
+from collections import deque
 import bmesh
 from typing import Optional, List, Set
 
@@ -22,5 +23,25 @@ def mesh_connected_components(mesh: bmesh.types.BMesh) -> List[Set[bmesh.types.B
     :return: A list of connected components, each of which is a set of `BMVert`s.
     """
     # TODO: Find the connected components of the mesh
+    visited = set()
+    components = []
+    
+    for vert in mesh.verts:
+        if vert not in visited:
+            # Start a new component
+            component = set()
+            queue = deque([vert])
 
-    return list(set())
+            while queue:
+                v = queue.popleft()
+                if v not in visited:
+                    visited.add(v)
+                    component.add(v)
+                    # Add adjacent vertices to the queue
+                    for edge in v.link_edges:
+                        queue.append(edge.other_vert(v))
+            
+            components.append(component)
+
+    return components
+
