@@ -1,7 +1,15 @@
 import bmesh
 
 
-# !!! This function will be used for automatic grading, don't edit the signature !!!
+def is_mesh_closed(mesh):
+    edge_face_count = {}
+    for edge in mesh.edges:
+        for face in edge.link_faces:
+            edge_face_count[edge] = edge_face_count.get(edge, 0) + 1
+
+    # If any edge is linked to fewer than or more than 2 faces, the mesh is open
+    return all(count == 2 for count in edge_face_count.values())
+
 def mesh_volume(mesh: bmesh.types.BMesh) -> float:
     """
     Finds the volume of the mesh.
@@ -12,6 +20,10 @@ def mesh_volume(mesh: bmesh.types.BMesh) -> float:
     :param mesh: The mesh to find the volume of.
     :return: The volume of the mesh as a float.
     """
+
+    # Use this in your main function
+    if not is_mesh_closed(mesh):
+        return 0.0  # Return zero volume for open meshes
 
     # (The math is a lot simpler if you know you only need to work with triangular faces)
     bmesh.ops.triangulate(mesh, faces=mesh.faces)
