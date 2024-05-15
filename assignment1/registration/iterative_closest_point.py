@@ -61,15 +61,34 @@ def point_to_point_transformation(
         return mathutils.Matrix.Identity(4)
 
     # TODO: Move both point clouds to the origin by finding their centroids
+    source_centroid = np.mean(source_points, axis=0)
+    destination_centroid = np.mean(destination_points, axis=0)
+
+    source_centered = source_points - source_centroid
+    destination_centered = destination_points - destination_centroid
 
     # TODO: Find the covariance between the source and destination coordinates
+    covariance_matrix = np.dot(destination_centered.T, source_centered)
 
     # TODO: Find a rotation matrix using SVD
+    U, S, Vt = np.linalg.svd(covariance_matrix)
+    rotation_matrix = np.dot(U, Vt)
+
+    if np.linalg.det(rotation_matrix) < 0:
+        Vt[-1, :] *= -1
+        rotation_matrix = np.dot(U, Vt)
 
     # TODO: Find a translation based on the rotated centroid (and not the original)
+    translation = destination_centroid - np.dot(rotation_matrix, source_centroid)
 
     # TODO: Return the combined matrix
-    return mathutils.Matrix(4)
+    transformation = mathutils.Matrix.Identity(4)
+    for i in range(3):
+        for j in range(3):
+            transformation[i][j] = rotation_matrix[i, j]
+        transformation[i][3] = translation[i]
+
+    return transformation
 
 
 # !!! This function will be used for automatic grading, don't edit the signature !!!
