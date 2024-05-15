@@ -23,7 +23,7 @@ def mesh_volume(mesh: bmesh.types.BMesh) -> float:
 
     # Use this in your main function
     if not is_mesh_closed(mesh):
-        return 0.0  # Return zero volume for open meshes
+        return -1  # Return zero volume for open meshes
 
     # (The math is a lot simpler if you know you only need to work with triangular faces)
     bmesh.ops.triangulate(mesh, faces=mesh.faces)
@@ -41,5 +41,6 @@ def mesh_volume(mesh: bmesh.types.BMesh) -> float:
         volume += vol
 
     result = abs(volume)
+    truncated_result = float(result_str)
 
-    return result  # Return the absolute volume to ensure positivity
+    return truncated_result  # Return the absolute volume to ensure positivity
