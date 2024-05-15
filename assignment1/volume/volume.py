@@ -41,6 +41,6 @@ def mesh_volume(mesh: bmesh.types.BMesh) -> float:
         volume += vol
 
     result = abs(volume)
-    truncated_result = float(result_str)
+    truncated_result = int(result * 10000) / 10000.0
 
     return truncated_result  # Return the absolute volume to ensure positivity
