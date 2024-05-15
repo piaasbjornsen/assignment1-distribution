@@ -6,6 +6,7 @@ import mathutils
 import numpy as np
 import numpy.random
 import scipy
+from scipy.spatial import KDTree
 
 
 def numpy_verts(mesh: bmesh.types.BMesh) -> np.ndarray:
@@ -15,12 +16,12 @@ def numpy_verts(mesh: bmesh.types.BMesh) -> np.ndarray:
     :param mesh: The BMesh to extract the vertices of.
     :return: A numpy array of shape [n, 3], where array[i, :] is the x, y, z coordinate of vertex i.
     """
-    data = bpy.data.meshes.new('tmp')
+    data = bpy.data.meshes.new("tmp")
     mesh.to_mesh(data)
     # Explained here:
     # https://blog.michelanders.nl/2016/02/copying-vertices-to-numpy-arrays-in_4.html
     vertices = np.zeros(len(mesh.verts) * 3, dtype=np.float64)
-    data.vertices.foreach_get('co', vertices)
+    data.vertices.foreach_get("co", vertices)
     return vertices.reshape([len(mesh.verts), 3])
 
 
@@ -31,18 +32,16 @@ def numpy_normals(mesh: bmesh.types.BMesh) -> np.ndarray:
     :param mesh: The BMesh to extract the normals of.
     :return: A numpy array of shape [n, 3], where array[i, :] is the x, y, z normal of vertex i.
     """
-    data = bpy.data.meshes.new('tmp')
+    data = bpy.data.meshes.new("tmp")
     mesh.to_mesh(data)
     normals = np.zeros(len(mesh.verts) * 3, dtype=np.float64)
-    data.vertices.foreach_get('normal', normals)
+    data.vertices.foreach_get("normal", normals)
     return normals.reshape([len(mesh.verts), 3])
 
 
 # !!! This function will be used for automatic grading, don't edit the signature !!!
 def point_to_point_transformation(
-        source_points: np.ndarray,
-        destination_points: np.ndarray,
-        **kwargs
+    source_points: np.ndarray, destination_points: np.ndarray, **kwargs
 ) -> mathutils.Matrix:
     """
     Given a set of point-pairs, finds an approximate transformation to register source points to destination points.
@@ -61,23 +60,42 @@ def point_to_point_transformation(
         return mathutils.Matrix.Identity(4)
 
     # TODO: Move both point clouds to the origin by finding their centroids
+    src_centroid = np.mean(source_points, axis=0)
+    dst_centroid = np.mean(destination_points, axis=0)
+
+    src_centered = source_points - src_centroid
+    dst_centered = destination_points - dst_centroid
 
     # TODO: Find the covariance between the source and destination coordinates
+    H = np.dot(src_centered.T, dst_centered)
 
     # TODO: Find a rotation matrix using SVD
+    U, S, Vt = np.linalg.svd(H)
+    R = np.dot(Vt.T, U.T)
+    if np.linalg.det(R) < 0:
+        Vt[2, :] *= -1
+        R = np.dot(Vt.T, U.T)
 
     # TODO: Find a translation based on the rotated centroid (and not the original)
+    t = dst_centroid - np.dot(R, src_centroid)
 
     # TODO: Return the combined matrix
-    return mathutils.Matrix(4)
+    T = mathutils.Matrix.Identity(4)
+    R_mat = mathutils.Matrix(R.tolist())
+    for i in range(3):
+        for j in range(3):
+            T[i][j] = R_mat[i][j]
+    T[0][3], T[1][3], T[2][3] = t
+
+    return T
 
 
 # !!! This function will be used for automatic grading, don't edit the signature !!!
 def point_to_plane_transformation(
-        source_points: np.ndarray,
-        destination_points: np.ndarray,
-        destination_normals: np.ndarray,
-        **kwargs
+    source_points: np.ndarray,
+    destination_points: np.ndarray,
+    destination_normals: np.ndarray,
+    **kwargs,
 ) -> mathutils.Matrix:
     """
     Given a set of point-pairs, finds an approximate transformation to register source points to destination points.
@@ -104,10 +122,12 @@ def point_to_plane_transformation(
 
 # !!! This function will be used for automatic grading, don't edit the signature !!!
 def closest_point_registration(
-        source: bmesh.types.BMesh, destination: bmesh.types.BMesh,
-        k: float, num_points: int,
-        distance_metric: str = "POINT_TO_POINT",
-        **kwargs
+    source: bmesh.types.BMesh,
+    destination: bmesh.types.BMesh,
+    k: float,
+    num_points: int,
+    distance_metric: str = "POINT_TO_POINT",
+    **kwargs,
 ) -> mathutils.Matrix:
     """
     Given a pair of meshes, finds an approximate transformation to register the source mesh to the destination.
@@ -136,26 +156,59 @@ def closest_point_registration(
              The transformation should contain only translation and rotation components;
              this version of rigid registration should not re-scale the source mesh.
     """
+
     # TODO: Find a transformation matrix which moves the source mesh closer to the destination mesh
 
     # hint Make sure not to select more points than are in the mesh or fewer than one point
-
     # TODO: Select some points from both meshes
+
+    def bmesh_to_numpy(bmesh):
+        return np.array([v.co[:] for v in bmesh.verts])
+
+    src_points = bmesh_to_numpy(source)
+    dst_points = bmesh_to_numpy(destination)
+
+    # Ensure we don't select more points than available or fewer than one point
+    num_points = max(1, min(num_points, len(src_points), len(dst_points)))
+
+    # Randomly sample points if num_points is less than the number of vertices
+    if num_points < len(src_points):
+        src_points = src_points[
+            np.random.choice(src_points.shape[0], num_points, replace=False)
+        ]
+    if num_points < len(dst_points):
+        dst_points = dst_points[
+            np.random.choice(dst_points.shape[0], num_points, replace=False)
+        ]
 
     # TODO: Get the nearest destination point for each source point
     # HINT: scipy.spatial.KDTree makes this much faster!
 
+    # Find the nearest destination point for each source point using KDTree
+    tree = KDTree(dst_points)
+    distances, indices = tree.query(src_points)
+
     # TODO: Reject outlier point-pairs
+
+    # Calculate the median distance
+    median_distance = np.median(distances)
+
+    # Reject outlier point-pairs
+    valid_pairs = distances < k * median_distance
+    src_valid = src_points[valid_pairs]
+    dst_valid = dst_points[indices[valid_pairs]]
 
     # Estimate a transformation based on the selected point-pairs
     if distance_metric == "POINT_TO_POINT":
         # TODO: call point_to_point_transformation() on your selected source and destination points
-        return mathutils.Matrix.LocRotScale(
-            mathutils.Vector(numpy.random.uniform(low=-0.1, high=0.1, size=[3])),
-            mathutils.Matrix(numpy.random.uniform(low=-1, high=1, size=[4, 4])).to_quaternion(),
-            mathutils.Vector([1, 1, 1]),
-        )
-
+        # return mathutils.Matrix.LocRotScale(
+        #     mathutils.Vector(numpy.random.uniform(low=-0.1, high=0.1, size=[3])),
+        #     mathutils.Matrix(
+        #         numpy.random.uniform(low=-1, high=1, size=[4, 4])
+        #     ).to_quaternion(),
+        #     mathutils.Vector([1, 1, 1]),
+        # )
+        return point_to_point_transformation(src_valid, dst_valid)
     elif distance_metric == "POINT_TO_PLANE":
         raise NotImplementedError("Implement point-to-plant estimation")
     else:
@@ -164,11 +217,14 @@ def closest_point_registration(
 
 # !!! This function will be used for automatic grading, don't edit the signature !!!
 def iterative_closest_point_registration(
-        source: bmesh.types.BMesh, destination: bmesh.types.BMesh,
-        k: float, num_points: int,
-        iterations: int, epsilon: float,
-        distance_metric: str = "POINT_TO_POINT",
-        **kwargs
+    source: bmesh.types.BMesh,
+    destination: bmesh.types.BMesh,
+    k: float,
+    num_points: int,
+    iterations: int,
+    epsilon: float,
+    distance_metric: str = "POINT_TO_POINT",
+    **kwargs,
 ) -> list[mathutils.Matrix]:
     """
     Iterative Closest Point (ICP) registration algorithm.
@@ -198,10 +254,7 @@ def iterative_closest_point_registration(
 
         # Find a transformation which moves the source mesh closer to the target mesh
         transformation = closest_point_registration(
-            source, destination,
-            k, num_points,
-            distance_metric,
-            **kwargs
+            source, destination, k, num_points, distance_metric, **kwargs
         )
 
         # Check for early-stopping (transformation is very similar to identity)
