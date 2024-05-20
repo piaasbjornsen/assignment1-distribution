@@ -1,247 +1,95 @@
 import random
-
 import bpy
 import bmesh
 import mathutils
 import numpy as np
-import numpy.random
-import scipy
-
+import scipy.spatial
 
 def numpy_verts(mesh: bmesh.types.BMesh) -> np.ndarray:
-    """
-    Extracts a numpy array of (x, y, z) vertices from a blender mesh
-
-    :param mesh: The BMesh to extract the vertices of.
-    :return: A numpy array of shape [n, 3], where array[i, :] is the x, y, z coordinate of vertex i.
-    """
     data = bpy.data.meshes.new('tmp')
     mesh.to_mesh(data)
-    # Explained here:
-    # https://blog.michelanders.nl/2016/02/copying-vertices-to-numpy-arrays-in_4.html
     vertices = np.zeros(len(mesh.verts) * 3, dtype=np.float64)
     data.vertices.foreach_get('co', vertices)
     return vertices.reshape([len(mesh.verts), 3])
 
-
 def numpy_normals(mesh: bmesh.types.BMesh) -> np.ndarray:
-    """
-    Extracts a numpy array of (x, y, z) normals from a blender mesh
-
-    :param mesh: The BMesh to extract the normals of.
-    :return: A numpy array of shape [n, 3], where array[i, :] is the x, y, z normal of vertex i.
-    """
     data = bpy.data.meshes.new('tmp')
     mesh.to_mesh(data)
     normals = np.zeros(len(mesh.verts) * 3, dtype=np.float64)
     data.vertices.foreach_get('normal', normals)
     return normals.reshape([len(mesh.verts), 3])
 
-
-# !!! This function will be used for automatic grading, don't edit the signature !!!
-def point_to_point_transformation(
-        source_points: np.ndarray,
-        destination_points: np.ndarray,
-        **kwargs
-) -> mathutils.Matrix:
-    """
-    Given a set of point-pairs, finds an approximate transformation to register source points to destination points.
-
-    Point pairs are passed as two separate matrices of the same shape, associations are made index-wise:
-        source_points[i, :] --> destination_points[i, :]
-
-    :param source_points: Collection of n points to move, represented by an [n, 3] numpy matrix.
-    :param destination_points: Collection of n points to move toward, represented by an [n, 3] numpy matrix.
-    :return: A transformation matrix which, applied to every point in source_points,
-             would bring them closer to being registered with destination_points.
-             The transformation should contain only translation and rotation components;
-             this version of rigid registration should not re-scale the source mesh.
-    """
+def point_to_point_transformation(source_points, destination_points, **kwargs):
     if len(source_points) == 0 or source_points.shape != destination_points.shape:
         return mathutils.Matrix.Identity(4)
 
-    # TODO: Move both point clouds to the origin by finding their centroids
-    source_centroid = np.mean(source_points, axis=0)
-    destination_centroid = np.mean(destination_points, axis=0)
+    centroid_source = np.mean(source_points, axis=0)
+    centroid_destination = np.mean(destination_points, axis=0)
 
-    source_centered = source_points - source_centroid
-    destination_centered = destination_points - destination_centroid
+    H = np.dot((source_points - centroid_source).T, (destination_points - centroid_destination))
 
-    # TODO: Find the covariance between the source and destination coordinates
-    covariance_matrix = np.dot(destination_centered.T, source_centered)
+    U, S, Vt = np.linalg.svd(H)
+    R = np.dot(Vt.T, U.T)
 
-    # TODO: Find a rotation matrix using SVD
-    U, S, Vt = np.linalg.svd(covariance_matrix)
-    rotation_matrix = np.dot(U, Vt)
+    if np.linalg.det(R) < 0:
+        Vt[2, :] *= -1
+        R = np.dot(Vt.T, U.T)
 
-    if np.linalg.det(rotation_matrix) < 0:
-        Vt[-1, :] *= -1
-        rotation_matrix = np.dot(U, Vt)
+    T = centroid_destination.T - np.dot(R, centroid_source.T)
 
-    # TODO: Find a translation based on the rotated centroid (and not the original)
-    translation = destination_centroid - np.dot(rotation_matrix, source_centroid)
-
-    # TODO: Return the combined matrix
     transformation = mathutils.Matrix.Identity(4)
     for i in range(3):
         for j in range(3):
-            transformation[i][j] = rotation_matrix[i, j]
-        transformation[i][3] = translation[i]
+            transformation[i][j] = R[i, j]
+        transformation[i][3] = T[i]
 
     return transformation
 
+def point_to_plane_transformation(source_points, destination_points, destination_normals, **kwargs):
+    return mathutils.Matrix.Identity(4)
 
-# !!! This function will be used for automatic grading, don't edit the signature !!!
-def point_to_plane_transformation(
-        source_points: np.ndarray,
-        destination_points: np.ndarray,
-        destination_normals: np.ndarray,
-        **kwargs
-) -> mathutils.Matrix:
-    """
-    Given a set of point-pairs, finds an approximate transformation to register source points to destination points.
+def closest_point_registration(source, destination, k, num_points, distance_metric="POINT_TO_POINT", **kwargs):
+    source_points = numpy_verts(source)
+    destination_points = numpy_verts(destination)
 
-    Here, the destination point are supplemented with normals.
-    Instead of moving the source points toward each destination point,
-    we can instead move them toward the planes defined by each destination point and its normal.
+    if num_points > len(source_points):
+        num_points = len(source_points)
+    if num_points < 1:
+        num_points = 1
 
-    Point pairs and normals are passed as three separate matrices of the same shape, associations are made index-wise:
-        source_points[i, :] --> destination_points[i, :], destination_normals[i, :]
+    indices = np.random.choice(len(source_points), num_points, replace=False)
+    selected_source_points = source_points[indices]
 
-    :param source_points: Collection of n points to move, represented by an [n, 3] numpy matrix.
-    :param destination_points: Collection of n points to move toward, represented by an [n, 3] numpy matrix.
-    :param destination_normals: Collection of n normals of the destination points, represented by an [n, 3] numpy matrix.
-    :return: A transformation matrix which, applied to every point in source_points,
-             would bring them closer to being registered with destination_points.
-             The transformation should contain only translation and rotation components;
-             this version of rigid registration should not re-scale the source mesh.
-    """
+    destination_tree = scipy.spatial.KDTree(destination_points)
+    distances, closest_indices = destination_tree.query(selected_source_points)
+    selected_destination_points = destination_points[closest_indices]
 
-    # TODO: Implement a version of the ICP algorithm based on point-to-plane distances
-    return mathutils.Matrix(4)
+    median_distance = np.median(distances)
+    inliers = distances < k * median_distance
 
+    inlier_source_points = selected_source_points[inliers]
+    inlier_destination_points = selected_destination_points[inliers]
 
-# !!! This function will be used for automatic grading, don't edit the signature !!!
-def closest_point_registration(
-        source: bmesh.types.BMesh, destination: bmesh.types.BMesh,
-        k: float, num_points: int,
-        distance_metric: str = "POINT_TO_POINT",
-        **kwargs
-) -> mathutils.Matrix:
-    """
-    Given a pair of meshes, finds an approximate transformation to register the source mesh to the destination.
-    (This is one iteration of the rigid registration process)
-
-    First, we randomly select some points from both meshes (determined by num_points).
-    Next, we find the nearest point in the destination point selection for each point in the source selection.
-    From these pairings, we find the median distance between source points and their associated destinations.
-
-    When registering identical meshes, each source point will have a "true" counterpart in the destination mesh.
-    At the end of iterative registration, all points should have ~0 distance from their counterpart.
-    Because we've selected points randomly some counterparts of the source points won't be available to register with.
-    We can exclude these outliers by rejecting any point pairs with distance greater than k * the median distance.
-    When the meshes are fully registered, many point-pairs will have zero distance, so the median will be near-zero.
-
-    Finally, we can find an approximate transformation by minimizing point-to-point or point-to-plane distances.
-    The approach to use is determined by the distance_metric argument.
-
-    :param source: Source mesh (mesh to move)
-    :param destination: Destination mesh (mesh to move the source mesh toward)
-    :param k: Point rejection coefficient, points further than k * (median distance) apart are not included.
-    :param num_points: The maximum number of points to include for registration.
-    :param distance_metric: Determines which approach to use for registration, "POINT_TO_POINT" or "POINT_TO_PLANE".
-    :return: A transformation matrix which, applied to the source mesh,
-             would bring it closer to being registered with the destination mesh.
-             The transformation should contain only translation and rotation components;
-             this version of rigid registration should not re-scale the source mesh.
-    """
-    # TODO: Find a transformation matrix which moves the source mesh closer to the destination mesh
-
-    # hint Make sure not to select more points than are in the mesh or fewer than one point
-
-    # TODO: Select some points from both meshes
-
-    # TODO: Get the nearest destination point for each source point
-    # HINT: scipy.spatial.KDTree makes this much faster!
-
-    # TODO: Reject outlier point-pairs
-
-    # Estimate a transformation based on the selected point-pairs
     if distance_metric == "POINT_TO_POINT":
-        # TODO: call point_to_point_transformation() on your selected source and destination points
-        return mathutils.Matrix.LocRotScale(
-            mathutils.Vector(numpy.random.uniform(low=-0.1, high=0.1, size=[3])),
-            mathutils.Matrix(numpy.random.uniform(low=-1, high=1, size=[4, 4])).to_quaternion(),
-            mathutils.Vector([1, 1, 1]),
-        )
-
+        return point_to_point_transformation(inlier_source_points, inlier_destination_points)
     elif distance_metric == "POINT_TO_PLANE":
-        raise NotImplementedError("Implement point-to-plant estimation")
+        inlier_destination_normals = numpy_normals(destination)[closest_indices][inliers]
+        return point_to_plane_transformation(inlier_source_points, inlier_destination_points, inlier_destination_normals)
     else:
         raise Exception(f"Unrecognized distance metric '{distance_metric}'")
 
-
-# !!! This function will be used for automatic grading, don't edit the signature !!!
-def iterative_closest_point_registration(
-        source: bmesh.types.BMesh, destination: bmesh.types.BMesh,
-        k: float, num_points: int,
-        iterations: int, epsilon: float,
-        distance_metric: str = "POINT_TO_POINT",
-        **kwargs
-) -> list[mathutils.Matrix]:
-    """
-    Iterative Closest Point (ICP) registration algorithm.
-    Attempts to find a transformation which registers the source mesh to the destination.
-
-    Applies closest-point registration until convergence or `iterations` is reached.
-    Convergence is determined by epsilon:
-    If the next transformation is approximately the same as the identity matrix (as determined by epsilon),
-    then the registration is recommending no change to the source mesh's position, so we must have converged.
-
-    :param source: Source mesh (mesh to move)
-    :param destination: Destination mesh (mesh to move the source mesh toward)
-    :param k: Point rejection coefficient, points further than k * (median distance) apart are not included.
-    :param num_points: The maximum number of points to include for registration.
-    :param iterations: The maximum number of iterations to use for registration.
-    :param epsilon: Magnitude of allowable error in the final result.
-    :param distance_metric: Determines which approach to use for registration, "POINT_TO_POINT" or "POINT_TO_PLANE".
-    :return: A sequence of transformations which, applied to the source mesh in sequence,
-             would move it so that it matches the destination mesh (registered).
-             The transformation should contain only translation and rotation components;
-             this version of rigid registration should not re-scale the source mesh.
-             For some cases (such as non-identical meshes, or meshes with very different orientations)
-             ICP may fail to converge, the transformations representing an attempted registration are still returned.
-    """
+def iterative_closest_point_registration(source, destination, k, num_points, iterations, epsilon, distance_metric="POINT_TO_POINT", **kwargs):
     transformations = []
-    for i in range(iterations):
-
-        # Find a transformation which moves the source mesh closer to the target mesh
-        transformation = closest_point_registration(
-            source, destination,
-            k, num_points,
-            distance_metric,
-            **kwargs
-        )
-
-        # Check for early-stopping (transformation is very similar to identity)
+    for _ in range(iterations):
+        transformation = closest_point_registration(source, destination, k, num_points, distance_metric, **kwargs)
         deviation = np.asarray(transformation - mathutils.Matrix.Identity(4))
         if np.linalg.norm(deviation) < epsilon and np.max(deviation) < epsilon:
             break
-
-        # Apply the transformation to the source mesh
         source.transform(transformation)
         transformations.append(transformation)
-
     return transformations
 
-
-def net_transformation(transformations: list[mathutils.Matrix]) -> mathutils.Matrix:
-    """
-    Combines a sequence of transformations into a single transformation matrix with equivalent results.
-
-    :param transformations: A list of transformation matrices.
-    :return: A transformation matrix with equivalent results to applying all in sequence.
-    """
+def net_transformation(transformations):
     m = mathutils.Matrix.Identity(4)
     for t in transformations:
         m = t @ m

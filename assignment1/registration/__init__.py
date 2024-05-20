@@ -147,3 +147,13 @@ class ObjectICPRegistration(bpy.types.Operator):
     def menu_func(menu, context):
         menu.layout.operator(ObjectICPRegistration.bl_idname)
 
+def register():
+    bpy.utils.register_class(ObjectICPRegistration)
+    bpy.types.VIEW3D_MT_object.append(ObjectICPRegistration.menu_func)
+
+def unregister():
+    bpy.utils.unregister_class(ObjectICPRegistration)
+    bpy.types.VIEW3D_MT_object.remove(ObjectICPRegistration.menu_func)
+
+if __name__ == "__main__":
+    register()
