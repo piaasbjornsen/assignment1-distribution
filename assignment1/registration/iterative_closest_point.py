@@ -78,16 +78,68 @@ def closest_point_registration(source, destination, k, num_points, distance_metr
     else:
         raise Exception(f"Unrecognized distance metric '{distance_metric}'")
 
-def iterative_closest_point_registration(source, destination, k, num_points, iterations, epsilon, distance_metric="POINT_TO_POINT", **kwargs):
+
+def farthest_point_sampling(point_cloud, num_samples):
+    sampled_points = []
+    sampled_points.append(point_cloud[np.random.randint(len(point_cloud))])
+    distances = np.full(len(point_cloud), np.inf)
+
+    for _ in range(1, num_samples):
+        for i, point in enumerate(point_cloud):
+            distances[i] = min(distances[i], np.linalg.norm(point - sampled_points[-1]))
+        sampled_points.append(point_cloud[np.argmax(distances)])
+
+    return np.array(sampled_points)
+
+
+def normal_space_sampling(point_cloud, normals, num_samples, num_bins=10):
+    bins = np.zeros((num_bins, num_bins, num_bins), dtype=list)
+    for i in range(num_bins):
+        for j in range(num_bins):
+            for k in range(num_bins):
+                bins[i][j][k] = []
+    def bin_index(normal):
+        theta = np.arccos(normal[2]) / np.pi
+        phi = (np.arctan2(normal[1], normal[0]) + np.pi) / (2 * np.pi)
+        return int(theta * num_bins), int(phi * num_bins), int((theta + phi) * num_bins % num_bins)
+
+    for i, normal in enumerate(normals):
+        idx = bin_index(normal)
+        bins[idx[0]][idx[1]][idx[2]].append(point_cloud[i])
+
+    sampled_points = []
+    bin_indices = np.array([[i, j, k] for i in range(num_bins) for j in range(num_bins) for k in range(num_bins)])
+    np.random.shuffle(bin_indices)
+
+    for idx in bin_indices:
+        if len(bins[idx[0]][idx[1]][idx[2]]) > 0:
+            sampled_points.append(random.choice(bins[idx[0]][idx[1]][idx[2]]))
+        if len(sampled_points) >= num_samples:
+            break
+
+    return np.array(sampled_points)
+
+def iterative_closest_point_registration_with_sampling(source, destination, k, num_points, iterations, epsilon,
+                                                       distance_metric="POINT_TO_POINT", sampling_method="FPS",
+                                                       **kwargs):
     transformations = []
     for _ in range(iterations):
-        transformation = closest_point_registration(source, destination, k, num_points, distance_metric, **kwargs)
+        if sampling_method == "FPS":
+            source_sampled_points = farthest_point_sampling(source_points, num_points)
+        elif sampling_method == "NORMAL_SPACE":
+            source_sampled_points = normal_space_sampling(source_points, source_normals, num_points)
+        else:
+            raise ValueError("Unsupported sampling method")
+
+        transformation = closest_point_registration(source_sampled_points, destination, k, num_points, distance_metric,
+                                                    **kwargs)
         deviation = np.asarray(transformation - mathutils.Matrix.Identity(4))
         if np.linalg.norm(deviation) < epsilon and np.max(deviation) < epsilon:
             break
         source.transform(transformation)
         transformations.append(transformation)
     return transformations
+
 
 def net_transformation(transformations):
     m = mathutils.Matrix.Identity(4)
