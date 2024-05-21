@@ -85,7 +85,7 @@ class ObjectICPRegistration(bpy.types.Operator):
         # Find a transformation for the source mesh
         try:
             # We call your implementation here!
-            transformations = iterative_closest_point_registration(
+            transformations = iterative_closest_point_registration_with_sampling(
                 source, destination,
                 self.k, self.num_points,
                 self.iterations, self.epsilon,

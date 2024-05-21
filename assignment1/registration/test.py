@@ -40,7 +40,7 @@ class TestRegistration(unittest.TestCase):
         source, destination = primitives.CUBE, primitives.CUBE.copy()
         destination.transform(transformation)  # Move the destination, so we don't need to invert the transform
 
-        registration_transformations = iterative_closest_point_registration(
+        registration_transformations = iterative_closest_point_registration_with_sampling(
             source, destination,
             k=2.5, num_points=4096,
             iterations=100, epsilon=0.0005,
