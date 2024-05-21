@@ -101,9 +101,14 @@ def point_to_plane_transformation(
     angle = np.linalg.norm(rotation_vector)
     if angle != 0:
         axis = rotation_vector / angle
-        R = mathutils.Matrix.Rotation(angle, 4, mathutils.Vector(axis))
+        R_rot = mathutils.Matrix.Rotation(angle, 3, mathutils.Vector(axis))
     else:
-        R = mathutils.Matrix.Identity(4)
+        R_rot = mathutils.Matrix.Identity(3)
+
+    R = mathutils.Matrix.Identity(4)
+    for i in range(3):
+        for j in range(3):
+            R[i][j] = R_rot[i][j]
 
     # Construct the translation matrix from the translation vector
     T = mathutils.Matrix.Translation(translation_vector.flatten())
