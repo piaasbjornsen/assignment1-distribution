@@ -2,3 +2,4 @@ numpy
 scipy
 pip
 fake-bpy-module
+scikit-learn

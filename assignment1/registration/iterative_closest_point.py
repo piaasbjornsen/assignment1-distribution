@@ -4,6 +4,7 @@ import bmesh
 import mathutils
 import numpy as np
 import scipy.spatial
+from sklearn.cluster import KMeans
 
 def numpy_verts(mesh: bmesh.types.BMesh) -> np.ndarray:
     data = bpy.data.meshes.new('tmp')
@@ -66,7 +67,33 @@ def farthest_point_sampling(points, num_samples):
 
     return np.array(selected_points), np.array(selected_indices)
 
-SAMPLING_METHOD='FPS'
+
+def normal_space_sampling(points, normals, num_samples, num_clusters=10):
+    # Normalize the normals to unit length
+    normalized_normals = normals / np.linalg.norm(normals, axis=1, keepdims=True)
+
+    # Use k-means clustering to cluster normals
+    from sklearn.cluster import KMeans
+    kmeans = KMeans(n_clusters=num_clusters)
+    labels = kmeans.fit_predict(normalized_normals)
+
+    # Select points from each cluster
+    cluster_indices = [np.where(labels == i)[0] for i in range(num_clusters)]
+
+    sampled_indices = []
+    for indices in cluster_indices:
+        if len(indices) > 0:
+            sampled_indices.extend(
+                np.random.choice(indices, min(len(indices), num_samples // num_clusters), replace=False))
+
+    if len(sampled_indices) < num_samples:
+        additional_indices = np.random.choice(len(points), num_samples - len(sampled_indices), replace=False)
+        sampled_indices.extend(additional_indices)
+
+    return points[sampled_indices], sampled_indices
+
+
+SAMPLING_METHOD='NORMAL_SPACE'
 def closest_point_registration(source, destination, k, num_points, distance_metric="POINT_TO_POINT", **kwargs):
     source_points = numpy_verts(source)
     destination_points = numpy_verts(destination)
@@ -77,6 +104,9 @@ def closest_point_registration(source, destination, k, num_points, distance_metr
         num_points = 1
     if SAMPLING_METHOD == 'FPS':
         selected_source_points, selected_indices = farthest_point_sampling(source_points, num_points)
+    elif SAMPLING_METHOD == 'NORMAL_SPACE':
+        source_normals = numpy_normals(source)
+        selected_source_points, selected_indices = normal_space_sampling(source_points, source_normals, num_points)
     else:
         indices = np.random.choice(len(source_points), num_points, replace=False)
         selected_source_points = source_points[indices]
