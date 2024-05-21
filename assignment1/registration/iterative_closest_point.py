@@ -48,6 +48,25 @@ def point_to_point_transformation(source_points, destination_points, **kwargs):
 def point_to_plane_transformation(source_points, destination_points, destination_normals, **kwargs):
     return mathutils.Matrix.Identity(4)
 
+
+def farthest_point_sampling(points, num_samples):
+    selected_indices = [np.random.randint(len(points))]
+    selected_points = [points[selected_indices[-1]]]
+
+    distances = np.full(len(points), np.inf)
+
+    for _ in range(1, num_samples):
+        last_point = selected_points[-1]
+        dists = np.linalg.norm(points - last_point, axis=1)
+        distances = np.minimum(distances, dists)
+        farthest_index = np.argmax(distances)
+
+        selected_indices.append(farthest_index)
+        selected_points.append(points[farthest_index])
+
+    return np.array(selected_points), np.array(selected_indices)
+
+SAMPLING_METHOD='FPS'
 def closest_point_registration(source, destination, k, num_points, distance_metric="POINT_TO_POINT", **kwargs):
     source_points = numpy_verts(source)
     destination_points = numpy_verts(destination)
@@ -56,9 +75,11 @@ def closest_point_registration(source, destination, k, num_points, distance_metr
         num_points = len(source_points)
     if num_points < 1:
         num_points = 1
-
-    indices = np.random.choice(len(source_points), num_points, replace=False)
-    selected_source_points = source_points[indices]
+    if SAMPLING_METHOD == 'FPS':
+        selected_source_points, selected_indices = farthest_point_sampling(source_points, num_points)
+    else:
+        indices = np.random.choice(len(source_points), num_points, replace=False)
+        selected_source_points = source_points[indices]
 
     destination_tree = scipy.spatial.KDTree(destination_points)
     distances, closest_indices = destination_tree.query(selected_source_points)
@@ -74,7 +95,8 @@ def closest_point_registration(source, destination, k, num_points, distance_metr
         return point_to_point_transformation(inlier_source_points, inlier_destination_points)
     elif distance_metric == "POINT_TO_PLANE":
         inlier_destination_normals = numpy_normals(destination)[closest_indices][inliers]
-        return point_to_plane_transformation(inlier_source_points, inlier_destination_points, inlier_destination_normals)
+        return point_to_plane_transformation(inlier_source_points, inlier_destination_points,
+                                             inlier_destination_normals)
     else:
         raise Exception(f"Unrecognized distance metric '{distance_metric}'")
 
