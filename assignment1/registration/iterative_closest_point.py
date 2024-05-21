@@ -52,10 +52,66 @@ def point_to_point_transformation(source_points, destination_points, **kwargs):
     return transformation
 
 
+# !!! This function will be used for automatic grading, don't edit the signature !!!
 def point_to_plane_transformation(
-    source_points, destination_points, destination_normals, **kwargs
-):
-    return mathutils.Matrix.Identity(4)
+    source_points: np.ndarray,
+    destination_points: np.ndarray,
+    destination_normals: np.ndarray,
+    **kwargs,
+) -> mathutils.Matrix:
+    """
+    Given a set of point-pairs, finds an approximate transformation to register source points to destination points.
+
+    Here, the destination point are supplemented with normals.
+    Instead of moving the source points toward each destination point,
+    we can instead move them toward the planes defined by each destination point and its normal.
+
+    Point pairs and normals are passed as three separate matrices of the same shape, associations are made index-wise:
+        source_points[i, :] --> destination_points[i, :], destination_normals[i, :]
+
+    :param source_points: Collection of n points to move, represented by an [n, 3] numpy matrix.
+    :param destination_points: Collection of n points to move toward, represented by an [n, 3] numpy matrix.
+    :param destination_normals: Collection of n normals of the destination points, represented by an [n, 3] numpy matrix.
+    :return: A transformation matrix which, applied to every point in source_points,
+             would bring them closer to being registered with destination_points.
+             The transformation should contain only translation and rotation components;
+             this version of rigid registration should not re-scale the source mesh.
+    """
+    A = np.zeros((len(source_points), 6))
+    b = np.zeros((len(source_points), 1))
+
+    for i in range(len(source_points)):
+        p_s = source_points[i]
+        p_d = destination_points[i]
+        n_d = destination_normals[i]
+
+        cross_prod = np.cross(p_s, n_d)
+
+        A[i, 0:3] = cross_prod
+        A[i, 3:6] = n_d
+        b[i, 0] = np.dot(n_d, p_d - p_s)
+
+    # Solve the linear system using least squares
+    x, resids, rank, s = np.linalg.lstsq(A, b, rcond=None)
+
+    rotation_vector = x[0:3]
+    translation_vector = x[3:6]
+
+    # Construct the rotation matrix from the rotation vector
+    angle = np.linalg.norm(rotation_vector)
+    if angle != 0:
+        axis = rotation_vector / angle
+        R = mathutils.Matrix.Rotation(angle, 4, mathutils.Vector(axis))
+    else:
+        R = mathutils.Matrix.Identity(4)
+
+    # Construct the translation matrix from the translation vector
+    T = mathutils.Matrix.Translation(translation_vector.flatten())
+
+    # Combine rotation and translation into a single transformation matrix
+    transformation = T @ R
+
+    return transformation
 
 
 def farthest_point_sampling(points, num_samples):
