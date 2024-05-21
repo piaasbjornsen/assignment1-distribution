@@ -1,7 +1,7 @@
 import random
 import unittest
 from .iterative_closest_point import *
-from data import primitives, meshes
+from data import primitives
 import mathutils
 
 NUM_TESTS = 10
@@ -12,50 +12,106 @@ class TestRegistration(unittest.TestCase):
     def assertSimilarTransformations(self, a: mathutils.Matrix, b: mathutils.Matrix):
         translation_error = a.to_translation() - b.to_translation()
         self.assertAlmostEqual(
-            translation_error.magnitude, 0, 3,
-            "Translation error should be low"
+            translation_error.magnitude, 0, 3, "Translation error should be low"
         )
         rotation_error = a.to_quaternion() - b.to_quaternion()
         self.assertAlmostEqual(
-            rotation_error.magnitude, 0, 3,
-            "Rotation error should be low"
+            rotation_error.magnitude, 0, 3, "Rotation error should be low"
         )
         scaling_error = a.to_scale() - b.to_scale()
-        self.assertAlmostEqual(
-            scaling_error.magnitude, 0, 3,
-            "Scaling should be zero"
+        self.assertAlmostEqual(scaling_error.magnitude, 0, 3, "Scaling should be zero")
+
+    def generate_random_translation(self):
+        return mathutils.Matrix.Translation(
+            [
+                random.uniform(-0.01, 0.01),
+                random.uniform(-0.01, 0.01),
+                random.uniform(-0.01, 0.01),
+            ]
         )
 
-    def test_cube(self):
-        translation = mathutils.Matrix.Translation([
-            random.uniform(-0.01, 0.01),
-            random.uniform(-0.01, 0.01),
-            random.uniform(-0.01, 0.01)
-        ])
-        rotation = mathutils.Matrix.Rotation(random.uniform(-0.01, 0.01), 4, 'X') \
-                   @ mathutils.Matrix.Rotation(random.uniform(-0.01, 0.01), 4, 'Y') \
-                   @ mathutils.Matrix.Rotation(random.uniform(-0.01, 0.01), 4, 'Z')
-        transformation = translation @ rotation
-
-        source, destination = primitives.CUBE, primitives.CUBE.copy()
-        destination.transform(transformation)  # Move the destination, so we don't need to invert the transform
-
-        registration_transformations = iterative_closest_point_registration(
-            source, destination,
-            k=2.5, num_points=4096,
-            iterations=100, epsilon=0.0005,
-            distance_metric='POINT_TO_POINT'
+    def generate_random_rotation(self):
+        return (
+            mathutils.Matrix.Rotation(random.uniform(-0.01, 0.01), 4, "X")
+            @ mathutils.Matrix.Rotation(random.uniform(-0.01, 0.01), 4, "Y")
+            @ mathutils.Matrix.Rotation(random.uniform(-0.01, 0.01), 4, "Z")
         )
 
-        # The function should have converged
-        self.assertLess(len(registration_transformations), 100)
+    def test_primitive_translation(self):
+        for primitive in primitives.ALL_PRIMITIVES:
+            for _ in range(NUM_TESTS):
+                translation = self.generate_random_translation()
+                source, destination = primitive.copy(), primitive.copy()
+                destination.transform(translation)
 
-        # Check that we found the right matrix
-        estimated_transformation = net_transformation(registration_transformations)
-        self.assertSimilarTransformations(transformation, estimated_transformation)
+                registration_transformations = iterative_closest_point_registration(
+                    source,
+                    destination,
+                    k=2.5,
+                    num_points=4096,
+                    iterations=100,
+                    epsilon=0.0005,
+                    distance_metric="POINT_TO_POINT",
+                )
+
+                self.assertLess(len(registration_transformations), 100)
+                estimated_transformation = net_transformation(
+                    registration_transformations
+                )
+                self.assertSimilarTransformations(translation, estimated_transformation)
+
+    def test_primitive_rotation(self):
+        for primitive in primitives.ALL_PRIMITIVES:
+            for _ in range(NUM_TESTS):
+                rotation = self.generate_random_rotation()
+                source, destination = primitive.copy(), primitive.copy()
+                destination.transform(rotation)
+
+                registration_transformations = iterative_closest_point_registration(
+                    source,
+                    destination,
+                    k=2.5,
+                    num_points=4096,
+                    iterations=100,
+                    epsilon=0.0005,
+                    distance_metric="POINT_TO_POINT",
+                )
+
+                self.assertLess(len(registration_transformations), 100)
+                estimated_transformation = net_transformation(
+                    registration_transformations
+                )
+                self.assertSimilarTransformations(rotation, estimated_transformation)
+
+    def test_primitive_combined_transform(self):
+        for primitive in primitives.ALL_PRIMITIVES:
+            for _ in range(NUM_TESTS):
+                translation = self.generate_random_translation()
+                rotation = self.generate_random_rotation()
+                combined_transform = translation @ rotation
+
+                source, destination = primitive.copy(), primitive.copy()
+                destination.transform(combined_transform)
+
+                registration_transformations = iterative_closest_point_registration(
+                    source,
+                    destination,
+                    k=2.5,
+                    num_points=4096,
+                    iterations=100,
+                    epsilon=0.0005,
+                    distance_metric="POINT_TO_POINT",
+                )
+
+                self.assertLess(len(registration_transformations), 100)
+                estimated_transformation = net_transformation(
+                    registration_transformations
+                )
+                self.assertSimilarTransformations(
+                    combined_transform, estimated_transformation
+                )
 
     # TODO: Add unit tests for ICP
-
 
     # HINT: You can generate test-cases by applying a random transformation to a mesh
     #       and checking if ICP can 'undo' the transformation
